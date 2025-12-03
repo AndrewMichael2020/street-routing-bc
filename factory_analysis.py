@@ -120,14 +120,14 @@ G_fixed_temp.graph.update(G_directed.graph)
 for node, data in G_directed.nodes(data=True):
     G_fixed_temp.add_node(node, **data)
 
-# Add edges with proper directionality
+# Add edges with proper directionality based on TRAFFICDIR
 for u, v, k, data in G_directed.edges(keys=True, data=True):
     traffic_dir = data.get('TRAFFICDIR', 'Unknown')
     if isinstance(traffic_dir, list):
         traffic_dir = traffic_dir[0] if traffic_dir else 'Unknown'
     traffic_dir = str(traffic_dir).title()
     
-    # Add forward edge (u->v)
+    # Handle different TRAFFICDIR cases
     if traffic_dir in ['Both Directions', 'Both', 'Unknown']:
         # Bidirectional: add both u->v and v->u
         G_fixed_temp.add_edge(u, v, k, **data)
