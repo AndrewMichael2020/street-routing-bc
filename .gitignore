@@ -210,3 +210,4 @@ __marimo__/
 *.gpkg
 *.graphml
 route_map_*.html
+demo_route_*.html

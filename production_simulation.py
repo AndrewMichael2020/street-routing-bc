@@ -12,8 +12,8 @@ import webbrowser
 from multiprocessing import Pool, cpu_count
 
 # --- Configuration ---
-CHUNK_SIZE = 100        
-TOTAL_TRIPS = 1000      
+CHUNK_SIZE = 10         # Chunk size for parallel processing
+TOTAL_TRIPS = 10        # Number of mock trips to simulate (reduced for faster testing)
 GRAPH_FILE = "BC_GOLDEN_REPAIRED.graphml" 
 NUM_CORES = 3          
 
