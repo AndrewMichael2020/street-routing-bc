@@ -21,8 +21,8 @@ gpkg_filename = "NRN_BC_14_0_GPKG_en.gpkg"
 layer_name = "NRN_BC_14_0_ROADSEG"
 
 try:
-    # Load necessary columns including ROADJURIS
-    keep_cols = ['geometry', 'SPEED', 'ROADCLASS', 'PAVSURF', 'PAVSTATUS', 'ROADJURIS']
+    # Load necessary columns including ROADJURIS and TRAFFICDIR
+    keep_cols = ['geometry', 'SPEED', 'ROADCLASS', 'PAVSURF', 'PAVSTATUS', 'ROADJURIS', 'TRAFFICDIR']
     gdf_roads = gpd.read_file(gpkg_filename, layer=layer_name)
     
     # Prune immediately
@@ -50,7 +50,7 @@ gdf_roads = gdf_roads[gdf_roads.geometry.length > 0.00001]
 gdf_roads = gdf_roads.cx[-140:-110, 48:62]
 
 # C. ATTRIBUTE CLEANING
-text_cols = ['ROADCLASS', 'PAVSURF', 'PAVSTATUS', 'ROADJURIS']
+text_cols = ['ROADCLASS', 'PAVSURF', 'PAVSTATUS', 'ROADJURIS', 'TRAFFICDIR']
 for col in text_cols:
     if col in gdf_roads.columns:
         gdf_roads[col] = gdf_roads[col].astype(str).str.title().replace({'None': 'Unknown', 'Nan': 'Unknown'})
@@ -102,13 +102,54 @@ G = ox.graph_from_gdfs(gdf_nodes, gdf_roads)
 del gdf_nodes, gdf_roads, node_rows, node_map
 gc.collect()
 
-# Repair Connectivity
-G = G.to_undirected()
-G = G.to_directed()
-
-# Project to UTM
+# Project to UTM FIRST (before directionality fixes)
 G_proj = ox.project_graph(G)
 del G
+gc.collect()
+
+# Handle Directionality AFTER projection
+print("   Handling directionality for one-way roads...")
+# Create a directed graph and add reverse edges only for bidirectional roads
+G_directed = G_proj.to_directed()
+
+# For a cleaner approach, rebuild the graph with proper directionality
+G_fixed_temp = nx.MultiDiGraph()
+G_fixed_temp.graph.update(G_directed.graph)
+
+# Add nodes
+for node, data in G_directed.nodes(data=True):
+    G_fixed_temp.add_node(node, **data)
+
+# Add edges with proper directionality
+for u, v, k, data in G_directed.edges(keys=True, data=True):
+    traffic_dir = data.get('TRAFFICDIR', 'Unknown')
+    if isinstance(traffic_dir, list):
+        traffic_dir = traffic_dir[0] if traffic_dir else 'Unknown'
+    traffic_dir = str(traffic_dir).title()
+    
+    # Add forward edge (u->v)
+    if traffic_dir in ['Both Directions', 'Both', 'Unknown']:
+        # Bidirectional: add both u->v and v->u
+        G_fixed_temp.add_edge(u, v, k, **data)
+        # Create reverse edge
+        reverse_data = data.copy()
+        G_fixed_temp.add_edge(v, u, k, **reverse_data)
+    elif traffic_dir in ['Same Direction', 'Positive']:
+        # One-way forward: only u->v
+        G_fixed_temp.add_edge(u, v, k, **data)
+    elif traffic_dir in ['Opposite Direction', 'Negative']:
+        # One-way reverse: only v->u
+        G_fixed_temp.add_edge(v, u, k, **data)
+    else:
+        # Default to bidirectional for unknown patterns
+        G_fixed_temp.add_edge(u, v, k, **data)
+        reverse_data = data.copy()
+        G_fixed_temp.add_edge(v, u, k, **reverse_data)
+
+del G_directed
+gc.collect()
+G_proj = G_fixed_temp
+del G_fixed_temp
 gc.collect()
 
 # NULL ISLAND NUKE (Node Level)
@@ -149,6 +190,7 @@ for u, v, k, data in G_fixed.edges(keys=True, data=True):
     status = str(get_val('PAVSTATUS', 'Unknown'))
     surface = str(get_val('PAVSURF', 'Unknown'))
     r_class = str(get_val('ROADCLASS', 'Unknown'))
+    traffic_dir = str(get_val('TRAFFICDIR', 'Unknown'))
     
     # 1. OPTIMISTIC PAVING: 'Unknown' is assumed PAVED.
     # Only penalize explicit bad surfaces.
@@ -178,6 +220,7 @@ for u, v, k, data in G_fixed.edges(keys=True, data=True):
     # Keep Metadata for Auditing
     data['ROADCLASS'] = r_class
     data['PAVSURF'] = surface
+    data['TRAFFICDIR'] = traffic_dir
 
 # --- 6. Save ---
 outfile = "BC_GOLDEN_REPAIRED.graphml"
