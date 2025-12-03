@@ -6,7 +6,7 @@ import numpy as np
 import gc
 import psutil
 import os
-from shapely.geometry import Point
+from shapely.geometry import Point, LineString
 
 print("🏁 FACTORY v11 (Highway Boost & Null-Island Nuke) STARTING...")
 
@@ -103,9 +103,21 @@ del gdf_nodes, gdf_roads, node_rows, node_map
 gc.collect()
 
 # Project to UTM FIRST (before directionality fixes)
+# NOTE: ox.project_graph() doesn't project edge geometries, only nodes
+# So we need to manually project edge geometries after projection
 G_proj = ox.project_graph(G)
 del G
 gc.collect()
+
+# Manually project all edge geometries to match the projected node coordinates
+print("   Projecting edge geometries...")
+target_crs = G_proj.graph['crs']
+for u, v, k, data in G_proj.edges(keys=True, data=True):
+    if 'geometry' in data:
+        # Create a temporary GeoSeries to project the geometry
+        geom_gdf = gpd.GeoSeries([data['geometry']], crs='EPSG:4326')
+        projected_geom = geom_gdf.to_crs(target_crs)[0]
+        data['geometry'] = projected_geom
 
 # Handle Directionality AFTER projection
 print("   Handling directionality for one-way roads...")
@@ -131,8 +143,12 @@ for u, v, k, data in G_directed.edges(keys=True, data=True):
     if traffic_dir in ['Both Directions', 'Both', 'Unknown']:
         # Bidirectional: add both u->v and v->u
         G_fixed_temp.add_edge(u, v, k, **data)
-        # Create reverse edge
+        # Create reverse edge with reversed geometry
         reverse_data = data.copy()
+        if 'geometry' in reverse_data:
+            # Reverse the geometry for the reverse edge
+            coords = list(reverse_data['geometry'].coords)
+            reverse_data['geometry'] = LineString(coords[::-1])
         G_fixed_temp.add_edge(v, u, k, **reverse_data)
     elif traffic_dir in ['Same Direction', 'Positive']:
         # One-way forward: only u->v
@@ -144,6 +160,10 @@ for u, v, k, data in G_directed.edges(keys=True, data=True):
         # Default to bidirectional for unknown patterns
         G_fixed_temp.add_edge(u, v, k, **data)
         reverse_data = data.copy()
+        if 'geometry' in reverse_data:
+            # Reverse the geometry for the reverse edge
+            coords = list(reverse_data['geometry'].coords)
+            reverse_data['geometry'] = LineString(coords[::-1])
         G_fixed_temp.add_edge(v, u, k, **reverse_data)
 
 del G_directed

@@ -8,7 +8,7 @@ import psutil
 import os
 import sys
 import folium
-from IPython.display import display
+import webbrowser
 from multiprocessing import Pool, cpu_count
 
 # --- Configuration ---
@@ -176,7 +176,20 @@ def audit_and_plot(G_graph, route, title="Route"):
     folium.PolyLine(coords, color="blue", weight=5, opacity=0.7, tooltip=title).add_to(m)
     folium.Marker(coords[0], popup="Start", icon=folium.Icon(color="green")).add_to(m)
     folium.Marker(coords[-1], popup="End", icon=folium.Icon(color="red")).add_to(m)
-    display(m)
+    
+    # Save map to HTML file
+    map_filename = f"route_map_{title.replace(' ', '_')}.html"
+    m.save(map_filename)
+    print(f"   Map saved to: {map_filename}")
+    
+    # Try to open in browser
+    try:
+        map_path = os.path.abspath(map_filename)
+        webbrowser.open(f'file://{map_path}')
+        print(f"   Opening map in browser...")
+    except Exception as e:
+        print(f"   Could not open browser: {e}")
+        print(f"   Please open {map_filename} manually to view the map.")
 
 if longest_route_data['route']:
     long_id = longest_route_data['id']
