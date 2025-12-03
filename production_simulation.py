@@ -9,6 +9,7 @@ import os
 import sys
 import folium
 import webbrowser
+from pathlib import Path
 from multiprocessing import Pool, cpu_count
 
 # --- Configuration ---
@@ -182,10 +183,10 @@ def audit_and_plot(G_graph, route, title="Route"):
     m.save(map_filename)
     print(f"   Map saved to: {map_filename}")
     
-    # Try to open in browser
+    # Try to open in browser (cross-platform compatible)
     try:
-        map_path = os.path.abspath(map_filename)
-        webbrowser.open(f'file://{map_path}')
+        map_path = Path(map_filename).absolute().as_uri()
+        webbrowser.open(map_path)
         print(f"   Opening map in browser...")
     except Exception as e:
         print(f"   Could not open browser: {e}")
