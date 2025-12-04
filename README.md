@@ -33,9 +33,18 @@ Expected output:
 - NRN metadata integration working correctly
 ```
 
-## 🆕 New Features (v13)
+## 🆕 New Features (v14)
 
-### NRN Metadata Integration
+### NRN Data Fetch Improvements
+
+- **Complete API Data Fetching**: Fixed paging bug that was limiting metadata layers to 2,000 records
+- **Geographic CRS Fix**: Eliminated warnings during spatial operations
+- **Improved Logging**: Better visibility into data fetch progress with URLs and totals
+- **Comprehensive Testing**: Added automated tests for paging logic
+
+See **[NRN_FETCH_FIX.md](NRN_FETCH_FIX.md)** for technical details.
+
+### NRN Metadata Integration (v13)
 
 - **Alleyways Layer**: Complete alley/lane network for last-mile routing
 - **Trans-Canada Highway**: TCH designation for major routes  
@@ -48,6 +57,8 @@ See **[NRN_METADATA_GUIDE.md](NRN_METADATA_GUIDE.md)** for detailed usage.
 
 ## 📚 Documentation
 
+- **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Summary of NRN data fetch improvements
+- **[NRN_FETCH_FIX.md](NRN_FETCH_FIX.md)** - Technical details of API paging fix and CRS improvements
 - **[NRN_METADATA_GUIDE.md](NRN_METADATA_GUIDE.md)** - Complete guide to NRN metadata features
 - **[ALLEYWAYS_FEASIBILITY.md](ALLEYWAYS_FEASIBILITY.md)** - Feasibility assessment and integration plan
 - **[FIX_SUMMARY.md](FIX_SUMMARY.md)** - Executive summary, validation results, next steps
