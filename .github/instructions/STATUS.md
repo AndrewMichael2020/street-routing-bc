@@ -133,12 +133,13 @@ Key Results (10 mock routes in simulated environment):
 - ✅ Line 254: TRAFFICDIR preserved in edge attributes
 
 ### production_simulation.py
-- ✅ Line 19: Reduced TOTAL_TRIPS from 1000 to 10
+- ✅ Line 17: Reduced TOTAL_TRIPS from 1000 to 10
 - ✅ Lines 142, 161: Added TRAFFICDIR to audit output
 - ✅ Lines 180-193: Map visualization via HTML and browser
 
 ### Test Files
 - ✅ test_distance_fix.py: Comprehensive geometry projection tests
+- ✅ test_directionality_fix.py: TRAFFICDIR and one-way road validation
 - ✅ test_integration_demo.py: End-to-end workflow demonstration
 
 ## Conclusion
