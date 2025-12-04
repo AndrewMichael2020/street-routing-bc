@@ -10,6 +10,10 @@ from shapely.geometry import Point, LineString
 
 print("🏁 FACTORY v11 (Highway Boost & Null-Island Nuke) STARTING...")
 
+# Constants for road classification
+MAJOR_ROAD_CLASSES = ['Freeway', 'Expressway', 'Arterial', 'Collector']
+LOCAL_ROAD_CLASSES = ['Local', 'Collector', 'Resource', 'Ferry']
+
 def get_ram():
     return psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
 
@@ -27,7 +31,13 @@ try:
     
     # Prune immediately
     existing_cols = [c for c in keep_cols if c in gdf_roads.columns]
+    missing_cols = [c for c in keep_cols if c not in gdf_roads.columns]
     gdf_roads = gdf_roads[existing_cols]
+    
+    # Diagnostic output
+    print(f"   ✅ Loaded columns: {existing_cols}")
+    if missing_cols:
+        print(f"   ⚠️  Missing columns: {missing_cols}")
     
 except Exception as e:
     print(f"❌ Error loading file: {e}")
@@ -55,7 +65,58 @@ for col in text_cols:
     if col in gdf_roads.columns:
         gdf_roads[col] = gdf_roads[col].astype(str).str.title().replace({'None': 'Unknown', 'Nan': 'Unknown'})
 
-# D. SPEED LOGIC (BOOSTED)
+# D. DATA QUALITY DIAGNOSTICS
+print("   Data Quality Check:")
+for col in ['TRAFFICDIR', 'PAVSURF', 'ROADCLASS']:
+    if col in gdf_roads.columns:
+        total = len(gdf_roads)
+        unknown_count = (gdf_roads[col] == 'Unknown').sum()
+        known_count = total - unknown_count
+        known_pct = (known_count / total) * 100 if total > 0 else 0
+        print(f"     {col:<15}: {known_count:>7,} known ({known_pct:>5.1f}%), {unknown_count:>7,} unknown")
+        # Show top values
+        if known_count > 0:
+            top_vals = gdf_roads[gdf_roads[col] != 'Unknown'][col].value_counts().head(3)
+            print(f"       Top values: {', '.join([f'{v}: {c:,}' for v, c in top_vals.items()])}")
+
+# D2. INFER MISSING VALUES
+print("   Inferring missing values...")
+
+# Infer PAVSURF from PAVSTATUS if PAVSURF is Unknown but PAVSTATUS is known
+if 'PAVSURF' in gdf_roads.columns and 'PAVSTATUS' in gdf_roads.columns:
+    paved_mask = (gdf_roads['PAVSURF'] == 'Unknown') & (gdf_roads['PAVSTATUS'] == 'Paved')
+    unpaved_mask = (gdf_roads['PAVSURF'] == 'Unknown') & (gdf_roads['PAVSTATUS'] == 'Unpaved')
+    
+    before_unknown = (gdf_roads['PAVSURF'] == 'Unknown').sum()
+    gdf_roads.loc[paved_mask, 'PAVSURF'] = 'Paved'
+    gdf_roads.loc[unpaved_mask, 'PAVSURF'] = 'Gravel'  # Assume unpaved means gravel
+    after_unknown = (gdf_roads['PAVSURF'] == 'Unknown').sum()
+    inferred = before_unknown - after_unknown
+    print(f"     Inferred {inferred:,} PAVSURF values from PAVSTATUS")
+
+# For remaining Unknown PAVSURF, assume paved for major roads
+if 'PAVSURF' in gdf_roads.columns and 'ROADCLASS' in gdf_roads.columns:
+    major_unknown_mask = (gdf_roads['PAVSURF'] == 'Unknown') & (gdf_roads['ROADCLASS'].isin(MAJOR_ROAD_CLASSES))
+    
+    before_unknown = (gdf_roads['PAVSURF'] == 'Unknown').sum()
+    gdf_roads.loc[major_unknown_mask, 'PAVSURF'] = 'Paved'  # Assume major roads are paved
+    after_unknown = (gdf_roads['PAVSURF'] == 'Unknown').sum()
+    inferred = before_unknown - after_unknown
+    print(f"     Inferred {inferred:,} PAVSURF values for major roads (assumed Paved)")
+
+# For TRAFFICDIR, assume bidirectional for local roads, but leave highways as Unknown
+# (safer to not infer directionality for divided highways)
+if 'TRAFFICDIR' in gdf_roads.columns and 'ROADCLASS' in gdf_roads.columns:
+    local_unknown_mask = (gdf_roads['TRAFFICDIR'] == 'Unknown') & (gdf_roads['ROADCLASS'].isin(LOCAL_ROAD_CLASSES))
+    
+    before_unknown = (gdf_roads['TRAFFICDIR'] == 'Unknown').sum()
+    gdf_roads.loc[local_unknown_mask, 'TRAFFICDIR'] = 'Both Directions'  # Assume local roads are bidirectional
+    after_unknown = (gdf_roads['TRAFFICDIR'] == 'Unknown').sum()
+    inferred = before_unknown - after_unknown
+    print(f"     Inferred {inferred:,} TRAFFICDIR values for local roads (assumed Both Directions)")
+    print(f"     Note: {after_unknown:,} roads still have Unknown TRAFFICDIR (mostly highways - will be treated as bidirectional)")
+
+# E. SPEED LOGIC (BOOSTED)
 gdf_roads['SPEED'] = pd.to_numeric(gdf_roads['SPEED'], errors='coerce').fillna(-1)
 
 # Aggressive Defaults for Highways
@@ -256,6 +317,18 @@ for u, v, k, data in G_fixed.edges(keys=True, data=True):
 # --- 6. Save ---
 outfile = "BC_GOLDEN_REPAIRED.graphml"
 print(f"6. Saving Optimized Graph to '{outfile}'...")
+
+# Final diagnostics
+print("   Final Edge Attribute Quality:")
+total_edges = G_fixed.number_of_edges()
+trafficdir_known = sum(1 for u, v, k, d in G_fixed.edges(keys=True, data=True) if d.get('TRAFFICDIR', 'Unknown') != 'Unknown')
+pavsurf_known = sum(1 for u, v, k, d in G_fixed.edges(keys=True, data=True) if d.get('PAVSURF', 'Unknown') != 'Unknown')
+roadclass_known = sum(1 for u, v, k, d in G_fixed.edges(keys=True, data=True) if d.get('ROADCLASS', 'Unknown') != 'Unknown')
+
+print(f"     TRAFFICDIR: {trafficdir_known:>7,}/{total_edges:>7,} ({(trafficdir_known/total_edges)*100:>5.1f}%)")
+print(f"     PAVSURF:    {pavsurf_known:>7,}/{total_edges:>7,} ({(pavsurf_known/total_edges)*100:>5.1f}%)")
+print(f"     ROADCLASS:  {roadclass_known:>7,}/{total_edges:>7,} ({(roadclass_known/total_edges)*100:>5.1f}%)")
+
 ox.save_graphml(G_fixed, filepath=outfile)
 
 print("-" * 40)
