@@ -131,6 +131,7 @@ class NRNDataLoader:
             })
 
             success = False
+            feats = []
             for attempt in range(max_retries):
                 try:
                     print(f"   Request offset={offset} count={max_rec} (attempt {attempt+1})")
@@ -151,8 +152,10 @@ class NRNDataLoader:
 
             received = len(feats)
             print(f"   Received {received} features (total so far: {len(all_features)})")
-            # If we received fewer than chunk, we're at the end
-            if received < max_rec or received == 0:
+            # If we received fewer than requested, we're at the end
+            # NOTE: Only stop when received < max_rec (not ==), to handle case where
+            # the API returns exactly max_rec records but has more data
+            if received == 0 or received < max_rec:
                 break
             offset += received
 
@@ -412,8 +415,16 @@ class NRNDataLoader:
         
         gdf_enriched = gdf_roads.copy()
         
-        # Ensure we're in the same CRS for spatial operations
+        # Ensure we're in a projected CRS for spatial operations (buffering requires meters)
+        # If in geographic CRS (like EPSG:4617), reproject to BC Albers (EPSG:3005)
         target_crs = gdf_roads.crs
+        use_projected = False
+        projected_crs = 'EPSG:3005'  # BC Albers - metric
+        
+        if target_crs and target_crs.is_geographic:
+            print(f"   ⚠️  Roads in geographic CRS ({target_crs}) - temporarily reprojecting to {projected_crs} for buffer operations")
+            gdf_enriched = gdf_enriched.to_crs(projected_crs)
+            use_projected = True
         
         # Track enrichment statistics
         enrichment_stats = {}
@@ -421,7 +432,11 @@ class NRNDataLoader:
         # 1. Trans-Canada Highway flag
         if 'trans_canada' in metadata_layers:
             print("   Processing Trans-Canada Highway data...")
-            gdf_tch = metadata_layers['trans_canada'].to_crs(target_crs)
+            gdf_tch = metadata_layers['trans_canada']
+            if use_projected:
+                gdf_tch = gdf_tch.to_crs(projected_crs)
+            else:
+                gdf_tch = gdf_tch.to_crs(target_crs)
             
             # Spatial join to find roads that are part of Trans-Canada
             # Use a small buffer to account for slight misalignments
@@ -438,7 +453,11 @@ class NRNDataLoader:
         # 2. National Highway System flag
         if 'national_highway' in metadata_layers:
             print("   Processing National Highway System data...")
-            gdf_nhs = metadata_layers['national_highway'].to_crs(target_crs)
+            gdf_nhs = metadata_layers['national_highway']
+            if use_projected:
+                gdf_nhs = gdf_nhs.to_crs(projected_crs)
+            else:
+                gdf_nhs = gdf_nhs.to_crs(target_crs)
             
             gdf_nhs_buffered = gdf_nhs.copy()
             gdf_nhs_buffered['geometry'] = gdf_nhs_buffered.geometry.buffer(self.SPATIAL_JOIN_BUFFER_M)
@@ -453,7 +472,11 @@ class NRNDataLoader:
         # 3. Major Roads designation
         if 'major_roads' in metadata_layers:
             print("   Processing Major Roads data...")
-            gdf_major = metadata_layers['major_roads'].to_crs(target_crs)
+            gdf_major = metadata_layers['major_roads']
+            if use_projected:
+                gdf_major = gdf_major.to_crs(projected_crs)
+            else:
+                gdf_major = gdf_major.to_crs(target_crs)
             
             gdf_major_buffered = gdf_major.copy()
             gdf_major_buffered['geometry'] = gdf_major_buffered.geometry.buffer(self.SPATIAL_JOIN_BUFFER_M)
@@ -468,7 +491,11 @@ class NRNDataLoader:
         # 4. Blocked Passage points (mark segments as restricted)
         if 'blocked_passage' in metadata_layers:
             print("   Processing Blocked Passage data...")
-            gdf_blocked = metadata_layers['blocked_passage'].to_crs(target_crs)
+            gdf_blocked = metadata_layers['blocked_passage']
+            if use_projected:
+                gdf_blocked = gdf_blocked.to_crs(projected_crs)
+            else:
+                gdf_blocked = gdf_blocked.to_crs(target_crs)
             
             # Buffer blocked passage points to find affected road segments
             gdf_blocked_buffered = gdf_blocked.copy()
@@ -491,6 +518,11 @@ class NRNDataLoader:
         print(f"\n   📊 Enrichment Summary:")
         for category, count in enrichment_stats.items():
             print(f"      {category}: {count:,} segments")
+        
+        # Reproject back to original CRS if we temporarily reprojected
+        if use_projected:
+            print(f"   ✅ Reprojecting enriched data back to {target_crs}")
+            gdf_enriched = gdf_enriched.to_crs(target_crs)
         
         return gdf_enriched
     
