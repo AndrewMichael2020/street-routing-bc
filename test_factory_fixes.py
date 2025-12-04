@@ -16,14 +16,19 @@ def test_component_check_logic():
     # Create a test graph with multiple components
     G = nx.MultiDiGraph()
     
+    # BC Albers coordinate system - base coordinates for testing
+    BASE_X = 1000000  # meters, roughly central BC
+    BASE_Y = 500000   # meters
+    COORD_OFFSET = 1000  # 1km spacing between test nodes
+    
     # Add 120 nodes
     for i in range(120):
-        G.add_node(i, x=1000000 + i*1000, y=500000 + i*1000)
+        G.add_node(i, x=BASE_X + i*COORD_OFFSET, y=BASE_Y + i*COORD_OFFSET)
     
     # Create 60 small components (each component has 2 nodes connected)
     # This gives us 60 components total (more than threshold of 50)
     for i in range(0, 120, 2):
-        G.add_edge(i, i+1, geometry=LineString([(1000000, 500000), (1001000, 501000)]))
+        G.add_edge(i, i+1, geometry=LineString([(BASE_X, BASE_Y), (BASE_X + COORD_OFFSET, BASE_Y + COORD_OFFSET)]))
     
     num_components = nx.number_weakly_connected_components(G)
     print(f"   Test graph has {num_components} components")
@@ -173,9 +178,12 @@ def test_graph_cleanup():
 
 def main():
     """Run all tests."""
-    print("\n" + "🏁" * 30)
+    # Constants
+    BANNER_REPEAT = 30  # Number of times to repeat emoji in banner
+    
+    print("\n" + "🏁" * BANNER_REPEAT)
     print("TESTING FACTORY_ANALYSIS.PY FIXES")
-    print("🏁" * 30 + "\n")
+    print("🏁" * BANNER_REPEAT + "\n")
     
     results = []
     
