@@ -10,13 +10,25 @@ This document assesses the feasibility of integrating BC alleyways data from Sta
 
 ## 1. Data Source
 
-### MapServer Layer 91: British Columbia - Alleyways
-- **API Endpoint**: `https://geo.statcan.gc.ca/geo_wa/rest/services/NRN-RRN/nrn_rrn/MapServer/91/query`
-- **Format**: GeoJSON via REST API
-- **CRS**: EPSG:4617 (NAD83 CSRS) - same as main NRN data
-- **Provider**: Statistics Canada / Statistique Canada
+### NRN MapServer Layers
 
-### Query Parameters
+The following layers are available from Statistics Canada's NRN MapServer:
+
+| Layer ID | Layer Name | Description | Usage |
+|----------|------------|-------------|-------|
+| **2** | Blocked Passage | Gate/barrier locations | Mark restricted access roads |
+| **35** | Trans-Canada Highway | TCH route segments | Flag major highway routes |
+| **49** | National Highway System | NHS designated roads | Identify nationally significant routes |
+| **63** | Major Roads | Principal arterials | Enhanced road classification |
+| **77** | Local Roads | Local street network | Complete coverage |
+| **91** | Alleyways | Alley/lane network | Last-mile access routes |
+
+### Base API Endpoint
+```
+https://geo.statcan.gc.ca/geo_wa/rest/services/NRN-RRN/nrn_rrn/MapServer/{layer_id}/query
+```
+
+### Query Parameters (for all layers)
 ```
 where=1%3D1               # Select all records
 outFields=*               # All attributes
@@ -24,9 +36,31 @@ returnGeometry=true       # Include geometry
 f=geojson                 # GeoJSON format
 ```
 
-### Complete URL
+### Example URLs
+
+**Alleyways (Layer 91):**
 ```
 https://geo.statcan.gc.ca/geo_wa/rest/services/NRN-RRN/nrn_rrn/MapServer/91/query?where=1%3D1&outFields=*&returnGeometry=true&f=geojson
+```
+
+**Trans-Canada Highway (Layer 35):**
+```
+https://geo.statcan.gc.ca/geo_wa/rest/services/NRN-RRN/nrn_rrn/MapServer/35/query?where=1%3D1&outFields=*&returnGeometry=true&f=geojson
+```
+
+**National Highway System (Layer 49):**
+```
+https://geo.statcan.gc.ca/geo_wa/rest/services/NRN-RRN/nrn_rrn/MapServer/49/query?where=1%3D1&outFields=*&returnGeometry=true&f=geojson
+```
+
+**Major Roads (Layer 63):**
+```
+https://geo.statcan.gc.ca/geo_wa/rest/services/NRN-RRN/nrn_rrn/MapServer/63/query?where=1%3D1&outFields=*&returnGeometry=true&f=geojson
+```
+
+**Blocked Passage (Layer 2):**
+```
+https://geo.statcan.gc.ca/geo_wa/rest/services/NRN-RRN/nrn_rrn/MapServer/2/query?where=1%3D1&outFields=*&returnGeometry=true&f=geojson
 ```
 
 ---
@@ -190,21 +224,29 @@ gdf_roads = loader.load_and_merge_all(
    - Continue with main roads only
    - Log warning but don't fail entire build
 
-### Phase 2: Metadata Enhancement 📋 (Future)
+### Phase 2: Metadata Enhancement ✅ (Current PR - IMPLEMENTED)
 
-1. **Route Numbers** (RTNUMBER1-5)
+1. **Metadata Layers Integration** ✅
+   - Fetch Trans-Canada Highway designation (Layer 35)
+   - Fetch National Highway System designation (Layer 49)
+   - Fetch Major Roads designation (Layer 63)
+   - Fetch Blocked Passage points (Layer 2)
+   - Spatially join with main road network
+   - Add flags: `IS_TRANS_CANADA`, `IS_NATIONAL_HIGHWAY`, `IS_MAJOR_ROAD`, `HAS_BLOCKED_PASSAGE`
+
+2. **Route Numbers** (RTNUMBER1-5) ✅
    - Parse and combine into `ROUTE_NUMBERS` field
    - Enable route-specific queries ("fastest via Hwy 1")
 
-2. **Route Names** (RTENAME1-4EN)
+3. **Route Names** (RTENAME1-4EN) ✅
    - Parse and combine into `ROUTE_NAMES` field
    - Improve user-facing directions
 
-3. **Street Names** (L_STNAME_C, R_STNAME_C)
+4. **Street Names** (L_STNAME_C, R_STNAME_C) ✅
    - Extract into `STREET_NAME` field
    - Use for address-based queries
 
-4. **Place Names** (L_PLACENAM, R_PLACENAM)
+5. **Place Names** (L_PLACENAM, R_PLACENAM) ✅
    - Extract into `PLACE_NAME` field
    - Improve location-based filtering
 
@@ -400,14 +442,23 @@ The integration of BC alleyways from NRN MapServer Layer 91 is:
 ## Appendix B: Configuration Options
 
 ```python
-# config.py
+# config.py or factory_analysis.py
 NRN_CONFIG = {
     # Feature flags
-    'INCLUDE_ALLEYWAYS': True,
-    'INCLUDE_METADATA': True,
+    'INCLUDE_ALLEYWAYS': True,           # Fetch and merge alleyways from Layer 91
+    'INCLUDE_METADATA': True,            # Extract route numbers, names, etc.
+    'INCLUDE_METADATA_LAYERS': True,     # Fetch metadata from MapServer layers
+    
+    # Metadata layers to fetch (set to None for all, or list specific ones)
+    'METADATA_LAYERS': [
+        'trans_canada',        # Layer 35 - Trans-Canada Highway
+        'national_highway',    # Layer 49 - National Highway System
+        'major_roads',         # Layer 63 - Major roads
+        'blocked_passage'      # Layer 2 - Blocked passage points
+        # Note: 'local_roads' (Layer 77) is also available but redundant with main data
+    ],
     
     # API settings
-    'ALLEYWAYS_API_URL': 'https://geo.statcan.gc.ca/geo_wa/rest/services/NRN-RRN/nrn_rrn/MapServer/91/query',
     'API_TIMEOUT': 60,
     'API_MAX_RETRIES': 3,
     
@@ -420,6 +471,36 @@ NRN_CONFIG = {
     'PAVSURF_ALLEY': 'Paved',
     'ROADJURIS_ALLEY': 'Municipal'
 }
+```
+
+### Usage Example
+
+```python
+from nrn_data_loader import NRNDataLoader
+
+loader = NRNDataLoader()
+
+# Load with all features enabled
+gdf_roads = loader.load_and_merge_all(
+    gpkg_filename="NRN_BC_14_0_GPKG_en.gpkg",
+    layer_name="NRN_BC_14_0_ROADSEG",
+    columns=['geometry', 'SPEED', 'ROADCLASS', ...],
+    include_alleyways=True,
+    include_metadata=True,
+    include_metadata_layers=True,
+    metadata_layer_list=['trans_canada', 'national_highway', 'major_roads', 'blocked_passage']
+)
+
+# Result will have additional fields:
+# - ROUTE_NUMBERS: Combined route numbers (e.g., "1,16")
+# - ROUTE_NAMES: Combined route names (e.g., "Trans-Canada Highway")
+# - STREET_NAME: Street name
+# - PLACE_NAME: City/municipality name
+# - IS_TRANS_CANADA: Boolean flag for TCH segments
+# - IS_NATIONAL_HIGHWAY: Boolean flag for NHS segments
+# - IS_MAJOR_ROAD: Boolean flag for major roads
+# - HAS_BLOCKED_PASSAGE: Boolean flag for restricted segments
+# - BLOCKED_PASSAGE_TYPE: Type of blockage (if applicable)
 ```
 
 ---

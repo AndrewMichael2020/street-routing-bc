@@ -10,11 +10,25 @@ from shapely.geometry import Point, LineString
 from shapely import make_valid
 from shapely.validation import explain_validity
 
-print("🏁 FACTORY v12 (Enhanced Preprocessing & Validation) STARTING...")
+print("🏁 FACTORY v13 (Enhanced Preprocessing, Validation & NRN Integration) STARTING...")
+
+# Configuration for NRN data loading
+NRN_CONFIG = {
+    'INCLUDE_ALLEYWAYS': False,  # Feature flag - set to True to enable alleyways
+    'INCLUDE_METADATA': True,    # Extract route numbers, names, etc.
+    'INCLUDE_METADATA_LAYERS': False,  # Fetch Trans-Canada, National Highway, etc. from MapServer
+    'METADATA_LAYERS': [         # Which metadata layers to fetch (None for all)
+        'trans_canada',          # Trans-Canada Highway
+        'national_highway',      # National Highway System
+        'major_roads',           # Major roads
+        'blocked_passage'        # Blocked passage points
+    ],
+    'ALLEY_SPEED_DEFAULT': 15,   # km/h - typical alleyway speed
+}
 
 # Constants for road classification
 MAJOR_ROAD_CLASSES = ['Freeway', 'Expressway', 'Arterial', 'Collector']
-LOCAL_ROAD_CLASSES = ['Local', 'Collector', 'Resource', 'Ferry']
+LOCAL_ROAD_CLASSES = ['Local', 'Collector', 'Resource', 'Ferry', 'Alleyway']
 
 def get_ram():
     return psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
@@ -26,30 +40,74 @@ print("1. Loading & Sanitizing NRN Data...")
 gpkg_filename = "NRN_BC_14_0_GPKG_en.gpkg"
 layer_name = "NRN_BC_14_0_ROADSEG"
 
-try:
-    # Load necessary columns including ROADJURIS, TRAFFICDIR, and IDs
-    keep_cols = ['geometry', 'SPEED', 'ROADCLASS', 'PAVSURF', 'PAVSTATUS', 'ROADJURIS', 'TRAFFICDIR', 'NID', 'ROADSEGID']
-    gdf_roads = gpd.read_file(gpkg_filename, layer=layer_name)
-    
-    # Prune immediately
-    existing_cols = [c for c in keep_cols if c in gdf_roads.columns]
-    missing_cols = [c for c in keep_cols if c not in gdf_roads.columns]
-    gdf_roads = gdf_roads[existing_cols]
-    
-    # Diagnostic output
-    print(f"   ✅ Loaded columns: {existing_cols}")
-    if missing_cols:
-        print(f"   ⚠️  Missing columns: {missing_cols}")
-    
-    # Confirm CRS
-    print(f"   📍 Input CRS: {gdf_roads.crs}")
-    if str(gdf_roads.crs) == 'EPSG:4617':
-        print("   ⚠️  Data is in geographic coordinates (EPSG:4617)")
-        print("   ➡️  Will reproject to EPSG:3005 (BC Albers) for metric calculations")
-    
-except Exception as e:
-    print(f"❌ Error loading file: {e}")
-    exit()
+# Option 1: Use NRN Data Loader (supports alleyways + metadata)
+# Option 2: Direct GPKG load (traditional approach)
+USE_NRN_LOADER = (NRN_CONFIG['INCLUDE_ALLEYWAYS'] or 
+                  NRN_CONFIG['INCLUDE_METADATA'] or 
+                  NRN_CONFIG['INCLUDE_METADATA_LAYERS'])
+
+if USE_NRN_LOADER:
+    try:
+        from nrn_data_loader import NRNDataLoader
+        
+        print("   Using NRN Data Loader (supports alleyways + metadata)...")
+        loader = NRNDataLoader()
+        
+        # Load necessary columns including ROADJURIS, TRAFFICDIR, and IDs
+        # Also include metadata columns if enabled
+        keep_cols = ['geometry', 'SPEED', 'ROADCLASS', 'PAVSURF', 'PAVSTATUS', 'ROADJURIS', 'TRAFFICDIR', 'NID', 'ROADSEGID']
+        
+        if NRN_CONFIG['INCLUDE_METADATA']:
+            # Add metadata columns for route numbers and names
+            metadata_cols = ['RTNUMBER1', 'RTNUMBER2', 'RTNUMBER3', 'RTNUMBER4', 'RTNUMBER5',
+                           'RTENAME1EN', 'RTENAME2EN', 'RTENAME3EN', 'RTENAME4EN',
+                           'L_STNAME_C', 'R_STNAME_C', 'L_PLACENAM', 'R_PLACENAM']
+            keep_cols.extend(metadata_cols)
+        
+        gdf_roads = loader.load_and_merge_all(
+            gpkg_filename=gpkg_filename,
+            layer_name=layer_name,
+            columns=keep_cols,
+            include_alleyways=NRN_CONFIG['INCLUDE_ALLEYWAYS'],
+            include_metadata=NRN_CONFIG['INCLUDE_METADATA'],
+            include_metadata_layers=NRN_CONFIG['INCLUDE_METADATA_LAYERS'],
+            metadata_layer_list=NRN_CONFIG.get('METADATA_LAYERS')
+        )
+        
+    except ImportError:
+        print("   ⚠️  NRN Data Loader not available - falling back to direct GPKG load")
+        USE_NRN_LOADER = False
+    except Exception as e:
+        print(f"   ⚠️  NRN Data Loader failed: {e}")
+        print("   ⚠️  Falling back to direct GPKG load")
+        USE_NRN_LOADER = False
+
+if not USE_NRN_LOADER:
+    # Traditional direct GPKG load
+    try:
+        # Load necessary columns including ROADJURIS, TRAFFICDIR, and IDs
+        keep_cols = ['geometry', 'SPEED', 'ROADCLASS', 'PAVSURF', 'PAVSTATUS', 'ROADJURIS', 'TRAFFICDIR', 'NID', 'ROADSEGID']
+        gdf_roads = gpd.read_file(gpkg_filename, layer=layer_name)
+        
+        # Prune immediately
+        existing_cols = [c for c in keep_cols if c in gdf_roads.columns]
+        missing_cols = [c for c in keep_cols if c not in gdf_roads.columns]
+        gdf_roads = gdf_roads[existing_cols]
+        
+        # Diagnostic output
+        print(f"   ✅ Loaded columns: {existing_cols}")
+        if missing_cols:
+            print(f"   ⚠️  Missing columns: {missing_cols}")
+        
+        # Confirm CRS
+        print(f"   📍 Input CRS: {gdf_roads.crs}")
+        if str(gdf_roads.crs) == 'EPSG:4617':
+            print("   ⚠️  Data is in geographic coordinates (EPSG:4617)")
+            print("   ➡️  Will reproject to EPSG:3005 (BC Albers) for metric calculations")
+        
+    except Exception as e:
+        print(f"❌ Error loading file: {e}")
+        exit()
 
 initial_len = len(gdf_roads)
 print(f"   Loaded {initial_len} rows. RAM: {get_ram():.1f} MB")
@@ -282,7 +340,8 @@ defaults = {
     'Expressway': 90,    # Most BC highways are 90 km/h
     'Arterial': 60, 
     'Collector': 50, 
-    'Local': 40, 
+    'Local': 40,
+    'Alleyway': NRN_CONFIG.get('ALLEY_SPEED_DEFAULT', 15),  # Alleys are slower
     'Resource': 30, 
     'Ferry': 10,
     'Rapid Transit': 0
