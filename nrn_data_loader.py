@@ -159,9 +159,10 @@ class NRNDataLoader:
 
             received = len(feats)
             print(f"   → Received {received:,} features (total: {len(all_features):,})")
-            # If we received fewer than requested, we're at the end
-            # NOTE: Only stop when received < max_rec (not ==), to handle case where
-            # the API returns exactly max_rec records but has more data
+            # Stop paging when:
+            # - received == 0: No more data available (empty page)
+            # - received < max_rec: Partial page received (last page)
+            # Continue when received == max_rec: Full page suggests more data may exist
             if received == 0 or received < max_rec:
                 break
             offset += received
