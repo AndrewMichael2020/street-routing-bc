@@ -82,6 +82,9 @@ Maps are now cross-platform compatible:
 test_integration_demo.py:
   ✅ Map saved to: demo_route_Trip_5.html
   ✅ File can be opened in browser
+  
+Note: Integration demo uses demo_route_*.html naming,
+      production_simulation.py uses route_map_*.html naming
 ```
 
 ## Complete Test Suite Results
@@ -125,7 +128,7 @@ Key Results (10 mock routes in simulated environment):
 ## Files Modified in PR #4 (All Present)
 
 ### factory_analysis.py
-- ✅ Line 9: Added `LineString` import from shapely.geometry
+- ✅ Line 9: Added `LineString` import (from shapely.geometry import Point, LineString)
 - ✅ Lines 25, 53: Added TRAFFICDIR to keep_cols and text_cols
 - ✅ Lines 112-131: Manual edge geometry projection (KEY FIX)
 - ✅ Lines 146-178: Proper directionality based on TRAFFICDIR
