@@ -121,10 +121,13 @@ print(f"   Removed {before_filter - len(gdf_roads)} segments outside BC bounding
 
 # D. REPROJECT TO BC ALBERS (EPSG:3005) FOR METRIC CALCULATIONS
 print("   D. Reprojecting to BC Albers (EPSG:3005)...")
-if str(gdf_roads.crs) != 'EPSG:3005':
+original_crs = gdf_roads.crs
+if gdf_roads.crs.to_epsg() != 3005:
     gdf_roads = gdf_roads.to_crs('EPSG:3005')
-    print(f"   ✅ Reprojected from {gdf_roads.crs} to EPSG:3005")
+    print(f"   ✅ Reprojected from {original_crs} to EPSG:3005")
     print(f"   📍 New CRS: {gdf_roads.crs} (metric - meters)")
+else:
+    print(f"   ✅ Already in EPSG:3005")
 
 # E. Compute and inspect segment lengths in meters
 print("   E. Computing segment lengths (post-projection)...")
@@ -299,8 +302,10 @@ gc.collect()
 
 # --- 3. Build Topology ---
 print("3. Building Topology...")
-gdf_roads['u_coord'] = gdf_roads.geometry.apply(lambda x: (round(x.coords[0][0], 2), round(x.coords[0][1], 2)))
-gdf_roads['v_coord'] = gdf_roads.geometry.apply(lambda x: (round(x.coords[-1][0], 2), round(x.coords[-1][1], 2)))
+# Use 1 decimal place precision (0.1m = 10cm) for BC Albers coordinates
+# This is sufficient for road network topology while avoiding over-merging
+gdf_roads['u_coord'] = gdf_roads.geometry.apply(lambda x: (round(x.coords[0][0], 1), round(x.coords[0][1], 1)))
+gdf_roads['v_coord'] = gdf_roads.geometry.apply(lambda x: (round(x.coords[-1][0], 1), round(x.coords[-1][1], 1)))
 
 # Detect potential duplicate segments
 print("   Checking for duplicate/overlapping segments...")
