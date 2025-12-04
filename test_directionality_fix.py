@@ -89,13 +89,13 @@ def test_highway_preference():
     G.add_node(2, x=100, y=0)
     
     # Scenario 1: Highway vs Local Road (same distance, different speeds)
-    # Highway edge: 10km at 110 km/h = 5.45 minutes
+    # Highway edge: 10km at 90 km/h = 6.67 minutes
     # Local edge: 10km at 40 km/h = 15 minutes
     
     G.add_edge(1, 2, key=0, 
                length=10000,  # meters
-               travel_time=(10 / 110) * 60,  # minutes
-               speed_kph=110,
+               travel_time=(10 / 90) * 60,  # minutes
+               speed_kph=90,
                ROADCLASS='Freeway',
                TRAFFICDIR='Both Directions')
     
@@ -107,7 +107,7 @@ def test_highway_preference():
                TRAFFICDIR='Both Directions')
     
     print("\nScenario: Two edges between nodes 1 and 2")
-    print("  Edge 0 (Freeway): 10km @ 110 km/h = 5.45 min")
+    print("  Edge 0 (Freeway): 10km @ 90 km/h = 6.67 min")
     print("  Edge 1 (Local): 10km @ 40 km/h = 15.0 min")
     
     # Test edge selection logic from production_simulation.py

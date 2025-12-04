@@ -275,10 +275,11 @@ if invalid_speed_count > 0:
     gdf_roads.loc[(gdf_roads['SPEED'] > 0) & (gdf_roads['SPEED'] < 5), 'SPEED'] = 10  # Set minimum
     print(f"   ✅ Clipped invalid SPEED values")
 
-# Aggressive Defaults for Highways
+# Speed Defaults for BC Roads
+# Note: Most highways in BC are 90 km/h, with only Abbotsford-Hope section at 100 km/h
 defaults = {
-    'Freeway': 110,      # WAS 100, BOOSTED TO 110
-    'Expressway': 100,   # WAS 90, BOOSTED TO 100
+    'Freeway': 90,       # Most BC highways are 90 km/h
+    'Expressway': 90,    # Most BC highways are 90 km/h
     'Arterial': 60, 
     'Collector': 50, 
     'Local': 40, 
@@ -426,9 +427,27 @@ else:
     print(f"   ✅ No artifact nodes found")
 
 print("   Consolidating Intersections...")
-G_fixed = ox.consolidate_intersections(G_proj, tolerance=15, rebuild_graph=True, dead_ends=False)
-del G_proj
-gc.collect()
+# Check number of connected components - if too many, skip consolidation or use smaller tolerance
+num_components = nx.number_weakly_connected_components(G_proj)
+print(f"   Found {num_components} connected components")
+
+if num_components > 50:
+    print(f"   ⚠️  Too many components ({num_components}) - skipping consolidation to avoid timeout")
+    print(f"   ➡️  Graph will have slightly more nodes but processing will complete")
+    G_fixed = G_proj
+    del G_proj
+    gc.collect()
+else:
+    print(f"   Processing consolidation (this may take a few minutes)...")
+    try:
+        G_fixed = ox.consolidate_intersections(G_proj, tolerance=15, rebuild_graph=True, dead_ends=False)
+        print(f"   ✅ Consolidation complete")
+    except Exception as e:
+        print(f"   ⚠️  Consolidation failed: {e}")
+        print(f"   ➡️  Using unconsolidated graph")
+        G_fixed = G_proj
+    del G_proj
+    gc.collect()
 
 print(f"   Final graph: {G_fixed.number_of_nodes():,} nodes, {G_fixed.number_of_edges():,} edges")
 
