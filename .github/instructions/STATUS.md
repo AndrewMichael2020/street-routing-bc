@@ -20,7 +20,7 @@ The critical fix that prevents 1000x distance errors is present:
 test_distance_fix.py:
   ✅ Original edge length: 0.010000 degrees
   ✅ After manual projection: 728.49 meters (CORRECT!)
-  ✅ Route distances: 2.19 km (not 208,097 km)
+  ✅ 3-segment test route: 2.19 km (not 208,097 km)
 ```
 
 ### 2. Reverse Edge Geometry Fix ✅
@@ -64,6 +64,7 @@ Audit logs now display:
 **Test Results:**
 ```
 test_integration_demo.py:
+  ✅ 10 mock routes: average 4.32 km, max 9.50 km
   ✅ Segment distances: 1111.7m - 1454.6m (not 0.0)
   ✅ TRAFFICDIR displayed in audit output
 ```
@@ -93,7 +94,9 @@ test_integration_demo.py:
 1. ✅ Edge geometries are now properly projected to meters
 2. ✅ Reverse edges have correctly reversed geometries
 3. ✅ Distance calculations use projected coordinates
-4. ✅ Routes produce reasonable distances (not 208,097 km!)
+4. ✅ Test routes produce reasonable distances:
+   - 3-segment route: 2.19 km (not 208,097 km!)
+   - 50-segment route: 7.28 km (not absurd values!)
 ```
 
 ### test_directionality_fix.py
@@ -112,9 +115,9 @@ test_integration_demo.py:
 ======================================================================
 ✅ INTEGRATION DEMO PASSED
 ======================================================================
-Key Results:
+Key Results (10 mock routes in simulated environment):
   ✅ Routes calculated successfully with reasonable distances
-  ✅ Longest route: 9.50 km (NOT 208,097 km!)
+  ✅ Average route: 4.32 km, Longest route: 9.50 km (NOT 208,097 km!)
   ✅ All segment distances properly calculated (NOT 0.0)
   ✅ Map generated successfully
 ```
