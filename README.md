@@ -2,7 +2,7 @@
 
 ## 🎯 Quick Start
 
-This repository contains a fix for the routing engine's highway avoidance issue. Routes now correctly prefer highways (110 km/h) over local streets (40 km/h).
+This repository contains a fix for the routing engine's highway avoidance issue. Routes now correctly prefer highways (90 km/h for most BC highways, 100 km/h for Abbotsford-Hope section) over local streets (40 km/h).
 
 ### Run the Fix
 
@@ -65,7 +65,7 @@ $ python3 test_directionality_fix.py
 
 **Impact:**
 - Before: Vancouver → Abbotsford via local roads = 90 minutes
-- After: Vancouver → Abbotsford via Hwy 1 = 33 minutes ✅
+- After: Vancouver → Abbotsford via Hwy 1 = 36 minutes ✅ (90 km/h default speed)
 
 ## 📁 Files
 
@@ -127,10 +127,12 @@ All criteria from the original issue are now met:
 ### Audit Output (After Fix)
 ```
 CLASS           | TRAFFICDIR      | SURFACE    | SPEED    | DIST (m)   | TIME (min)
-Freeway         | Same Direction  | Paved      | 110.0    | 2500.0     | 1.36
-Expressway      | Same Direction  | Paved      | 100.0    | 1800.0     | 1.08
+Freeway         | Same Direction  | Paved      | 90.0     | 2500.0     | 1.67
+Expressway      | Same Direction  | Paved      | 90.0     | 1800.0     | 1.20
 Arterial        | Both Directions | Paved      | 60.0     | 1200.0     | 1.20
 ```
+
+Note: BC highway speeds are typically 90 km/h, with only the Abbotsford-Hope section at 100 km/h.
 
 High percentage of Freeway/Expressway segments = Fix working correctly ✅
 
