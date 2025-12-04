@@ -101,7 +101,8 @@ class NRNDataLoader:
         api_url = f"{self.BASE_API}/{layer_id}/query"
         info_url = f"{self.BASE_API}/{layer_id}?f=json"
 
-        print(f"\n🌐 Fetching {layer_name} from NRN MapServer (with paging)...")
+        print(f"\n🌐 Fetching {layer_name} from NRN MapServer...")
+        print(f"   URL: {api_url} (Layer {layer_id})")
         # 1) Ask the layer for its maxRecordCount (fallback to 1000 if missing)
         try:
             info_resp = requests.get(info_url, timeout=timeout)
@@ -134,24 +135,30 @@ class NRNDataLoader:
             feats = []
             for attempt in range(max_retries):
                 try:
-                    print(f"   Request offset={offset} count={max_rec} (attempt {attempt+1})")
+                    if attempt == 0:
+                        print(f"   Fetching offset={offset}, count={max_rec}...", end='', flush=True)
+                    else:
+                        print(f" retry {attempt+1}/{max_retries}...", end='', flush=True)
                     resp = requests.get(api_url, params=params, timeout=timeout)
                     resp.raise_for_status()
                     data = resp.json()
                     feats = data.get('features') or []
                     all_features.extend(feats)
                     success = True
+                    print(f" ✓")
                     break
                 except requests.exceptions.RequestException as e:
-                    print(f"   ⚠️  Attempt {attempt+1} failed: {e}")
-                    if attempt == max_retries - 1:
+                    if attempt < max_retries - 1:
+                        print(f" ✗ ({e})", end='', flush=True)
+                    else:
+                        print(f" ✗ ({e}) - giving up")
                         raise
 
             if not success:
                 break
 
             received = len(feats)
-            print(f"   Received {received} features (total so far: {len(all_features)})")
+            print(f"   → Received {received:,} features (total: {len(all_features):,})")
             # If we received fewer than requested, we're at the end
             # NOTE: Only stop when received < max_rec (not ==), to handle case where
             # the API returns exactly max_rec records but has more data
