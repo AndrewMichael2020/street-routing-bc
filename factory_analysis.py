@@ -10,6 +10,10 @@ from shapely.geometry import Point, LineString
 
 print("🏁 FACTORY v11 (Highway Boost & Null-Island Nuke) STARTING...")
 
+# Constants for road classification
+MAJOR_ROAD_CLASSES = ['Freeway', 'Expressway', 'Arterial', 'Collector']
+LOCAL_ROAD_CLASSES = ['Local', 'Collector', 'Resource', 'Ferry']
+
 def get_ram():
     return psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
 
@@ -92,8 +96,7 @@ if 'PAVSURF' in gdf_roads.columns and 'PAVSTATUS' in gdf_roads.columns:
 
 # For remaining Unknown PAVSURF, assume paved for major roads
 if 'PAVSURF' in gdf_roads.columns and 'ROADCLASS' in gdf_roads.columns:
-    major_roads = ['Freeway', 'Expressway', 'Arterial', 'Collector']
-    major_unknown_mask = (gdf_roads['PAVSURF'] == 'Unknown') & (gdf_roads['ROADCLASS'].isin(major_roads))
+    major_unknown_mask = (gdf_roads['PAVSURF'] == 'Unknown') & (gdf_roads['ROADCLASS'].isin(MAJOR_ROAD_CLASSES))
     
     before_unknown = (gdf_roads['PAVSURF'] == 'Unknown').sum()
     gdf_roads.loc[major_unknown_mask, 'PAVSURF'] = 'Paved'  # Assume major roads are paved
@@ -104,8 +107,7 @@ if 'PAVSURF' in gdf_roads.columns and 'ROADCLASS' in gdf_roads.columns:
 # For TRAFFICDIR, assume bidirectional for local roads, but leave highways as Unknown
 # (safer to not infer directionality for divided highways)
 if 'TRAFFICDIR' in gdf_roads.columns and 'ROADCLASS' in gdf_roads.columns:
-    local_roads = ['Local', 'Collector', 'Resource', 'Ferry']
-    local_unknown_mask = (gdf_roads['TRAFFICDIR'] == 'Unknown') & (gdf_roads['ROADCLASS'].isin(local_roads))
+    local_unknown_mask = (gdf_roads['TRAFFICDIR'] == 'Unknown') & (gdf_roads['ROADCLASS'].isin(LOCAL_ROAD_CLASSES))
     
     before_unknown = (gdf_roads['TRAFFICDIR'] == 'Unknown').sum()
     gdf_roads.loc[local_unknown_mask, 'TRAFFICDIR'] = 'Both Directions'  # Assume local roads are bidirectional

@@ -19,6 +19,18 @@ GRAPH_FILE = "BC_GOLDEN_REPAIRED.graphml"
 NUM_CORES = 3
 AUDIT_ROUTES = 10       # Number of routes to audit in detail
 
+# Constants for route generation
+APPROX_KM_PER_DEGREE = 100.0  # Approximate conversion factor for BC latitude
+
+# Route type labels for edge cases
+EDGE_CASE_LABELS = [
+    "Very Short (~5km)",
+    "Long Distance (~80km)",
+    "Cross-Region (~50km)",
+    "Coastal Route",
+    "Extreme Distance"
+]
+
 print(f"🏁 PRODUCTION START. RAM: {psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024:.1f} MB")
 
 # --- 1. Load Graph ---
@@ -41,7 +53,7 @@ distances = [15, 30, 45, 60, 75]  # Target distances in km (approximated)
 for i, target_km in enumerate(distances[:5]):
     # Calculate approximate degree offset for target distance
     # ~111 km per degree latitude, ~85 km per degree longitude at this latitude
-    offset_deg = target_km / 100.0
+    offset_deg = target_km / APPROX_KM_PER_DEGREE
     angle = np.random.uniform(0, 2 * np.pi)
     dest_lat = hospital_lat + offset_deg * np.cos(angle)
     dest_lon = hospital_lon + offset_deg * np.sin(angle)
@@ -262,9 +274,7 @@ for trip_id in range(TOTAL_TRIPS):
         if trip_id < 5:
             route_type = f"Average Distance Route (Target: ~{[15,30,45,60,75][trip_id]}km)"
         else:
-            edge_names = ["Very Short (~5km)", "Long Distance (~80km)", 
-                         "Cross-Region (~50km)", "Coastal Route", "Extreme Distance"]
-            route_type = f"Edge Case: {edge_names[trip_id - 5]}"
+            route_type = f"Edge Case: {EDGE_CASE_LABELS[trip_id - 5]}"
         
         segment_data = audit_route(G, route, trip_id + 1, route_type, dist, time_val)
         route_info.append({
