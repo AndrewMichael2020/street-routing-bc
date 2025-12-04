@@ -33,11 +33,30 @@ class NRNDataLoader:
     
     # Default parameters
     DEFAULT_ALLEY_SPEED = 15  # km/h - typical alleyway speed
+    SPATIAL_JOIN_BUFFER_M = 5  # meters - buffer for spatial joins to handle slight misalignments
+    BLOCKED_PASSAGE_BUFFER_M = 20  # meters - buffer for blocked passage points
     
     def __init__(self):
         self.gdf_roads = None
         self.gdf_alleys = None
         self.metadata_layers = {}  # Store metadata from various layers
+    
+    @staticmethod
+    def _filter_non_empty_values(row, exclude_values=None):
+        """
+        Helper function to filter out empty/invalid values from a row.
+        
+        Args:
+            row: Pandas Series (row of DataFrame)
+            exclude_values: List of values to exclude (default: ['none', 'nan', ''])
+        
+        Returns:
+            List of valid values
+        """
+        if exclude_values is None:
+            exclude_values = ['none', 'nan', '']
+        
+        return [str(v) for v in row if v and str(v).lower() not in exclude_values]
         
     def load_main_roads(self, gpkg_filename, layer_name, columns=None):
         """
@@ -336,7 +355,7 @@ class NRNDataLoader:
             # Spatial join to find roads that are part of Trans-Canada
             # Use a small buffer to account for slight misalignments
             gdf_tch_buffered = gdf_tch.copy()
-            gdf_tch_buffered['geometry'] = gdf_tch_buffered.geometry.buffer(5)  # 5 meter buffer
+            gdf_tch_buffered['geometry'] = gdf_tch_buffered.geometry.buffer(self.SPATIAL_JOIN_BUFFER_M)
             
             joined = gpd.sjoin(gdf_enriched, gdf_tch_buffered, how='left', predicate='intersects')
             gdf_enriched['IS_TRANS_CANADA'] = joined.index_right.notna()
@@ -351,7 +370,7 @@ class NRNDataLoader:
             gdf_nhs = metadata_layers['national_highway'].to_crs(target_crs)
             
             gdf_nhs_buffered = gdf_nhs.copy()
-            gdf_nhs_buffered['geometry'] = gdf_nhs_buffered.geometry.buffer(5)
+            gdf_nhs_buffered['geometry'] = gdf_nhs_buffered.geometry.buffer(self.SPATIAL_JOIN_BUFFER_M)
             
             joined = gpd.sjoin(gdf_enriched, gdf_nhs_buffered, how='left', predicate='intersects')
             gdf_enriched['IS_NATIONAL_HIGHWAY'] = joined.index_right.notna()
@@ -366,7 +385,7 @@ class NRNDataLoader:
             gdf_major = metadata_layers['major_roads'].to_crs(target_crs)
             
             gdf_major_buffered = gdf_major.copy()
-            gdf_major_buffered['geometry'] = gdf_major_buffered.geometry.buffer(5)
+            gdf_major_buffered['geometry'] = gdf_major_buffered.geometry.buffer(self.SPATIAL_JOIN_BUFFER_M)
             
             joined = gpd.sjoin(gdf_enriched, gdf_major_buffered, how='left', predicate='intersects')
             gdf_enriched['IS_MAJOR_ROAD'] = joined.index_right.notna()
@@ -382,7 +401,7 @@ class NRNDataLoader:
             
             # Buffer blocked passage points to find affected road segments
             gdf_blocked_buffered = gdf_blocked.copy()
-            gdf_blocked_buffered['geometry'] = gdf_blocked_buffered.geometry.buffer(20)  # 20 meter buffer
+            gdf_blocked_buffered['geometry'] = gdf_blocked_buffered.geometry.buffer(self.BLOCKED_PASSAGE_BUFFER_M)
             
             joined = gpd.sjoin(gdf_enriched, gdf_blocked_buffered, how='left', predicate='intersects')
             gdf_enriched['HAS_BLOCKED_PASSAGE'] = joined.index_right.notna()
@@ -423,9 +442,9 @@ class NRNDataLoader:
         route_cols_exist = [col for col in route_cols if col in gdf.columns]
         
         if route_cols_exist:
-            # Combine route numbers into a single field
+            # Combine route numbers into a single field using helper
             gdf['ROUTE_NUMBERS'] = gdf[route_cols_exist].apply(
-                lambda row: ','.join([str(v) for v in row if v and str(v).lower() not in ['none', 'nan', '']]), 
+                lambda row: ','.join(self._filter_non_empty_values(row)), 
                 axis=1
             )
             gdf['ROUTE_NUMBERS'] = gdf['ROUTE_NUMBERS'].replace('', 'None')
@@ -439,8 +458,9 @@ class NRNDataLoader:
         name_cols_exist = [col for col in name_cols if col in gdf.columns]
         
         if name_cols_exist:
+            # Combine route names using helper
             gdf['ROUTE_NAMES'] = gdf[name_cols_exist].apply(
-                lambda row: ','.join([str(v) for v in row if v and str(v).lower() not in ['none', 'nan', '']]),
+                lambda row: ','.join(self._filter_non_empty_values(row)),
                 axis=1
             )
             gdf['ROUTE_NAMES'] = gdf['ROUTE_NAMES'].replace('', 'None')

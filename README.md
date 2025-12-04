@@ -1,36 +1,58 @@
-# BC Street Routing Engine - Highway Avoidance Fix
+# BC Street Routing Engine - Enhanced with NRN Metadata
 
 ## 🎯 Quick Start
 
-This repository contains a fix for the routing engine's highway avoidance issue. Routes now correctly prefer highways (90 km/h for most BC highways, 100 km/h for Abbotsford-Hope section) over local streets (40 km/h).
+This repository contains a routing engine with comprehensive metadata integration from Statistics Canada's National Road Network (NRN). Routes now include:
+- ✅ Highway preference (90 km/h for most BC highways, 100 km/h for Abbotsford-Hope section)
+- ✅ Alleyways support for urban last-mile routing
+- ✅ Trans-Canada Highway and National Highway System designation
+- ✅ Route numbers and names for navigation
+- ✅ Blocked passage detection
 
-### Run the Fix
+### Run the System
 
 ```bash
 # 1. Build the graph (requires NRN_BC_14_0_GPKG_en.gpkg)
 python3 factory_analysis.py
 
-# 2. Run simulation with 1000 test routes
+# 2. Run simulation with test routes
 python3 production_simulation.py
 
-# 3. Verify the fix
+# 3. Verify the implementation
 python3 test_directionality_fix.py
+python3 test_nrn_integration.py
 ```
 
 Expected output:
 ```
 ✅ ALL TESTS PASSED
-- TRAFFICDIR column is now loaded and parsed
+- TRAFFICDIR column is loaded and parsed
 - One-way roads (divided highways) are correctly handled
 - Highway edges are properly created with correct directionality
-- Routing algorithm will prefer faster highways over local roads
+- Routing algorithm prefers faster highways over local roads
+- NRN metadata integration working correctly
 ```
+
+## 🆕 New Features (v13)
+
+### NRN Metadata Integration
+
+- **Alleyways Layer**: Complete alley/lane network for last-mile routing
+- **Trans-Canada Highway**: TCH designation for major routes  
+- **National Highway System**: NHS classification for primary corridors
+- **Major Roads**: Principal arterial network identification
+- **Blocked Passage**: Restricted access points (gates, barriers)
+- **Enhanced Metadata**: Route numbers, route names, street names, place names
+
+See **[NRN_METADATA_GUIDE.md](NRN_METADATA_GUIDE.md)** for detailed usage.
 
 ## 📚 Documentation
 
+- **[NRN_METADATA_GUIDE.md](NRN_METADATA_GUIDE.md)** - Complete guide to NRN metadata features
+- **[ALLEYWAYS_FEASIBILITY.md](ALLEYWAYS_FEASIBILITY.md)** - Feasibility assessment and integration plan
 - **[FIX_SUMMARY.md](FIX_SUMMARY.md)** - Executive summary, validation results, next steps
-- **[HIGHWAY_FIX_DOCUMENTATION.md](HIGHWAY_FIX_DOCUMENTATION.md)** - Technical documentation, usage guide
-- **[VISUAL_EXPLANATION.md](VISUAL_EXPLANATION.md)** - Visual diagrams, before/after comparison
+- **[HIGHWAY_FIX_DOCUMENTATION.md](HIGHWAY_FIX_DOCUMENTATION.md)** - Technical documentation, usage guide (if exists)
+- **[VISUAL_EXPLANATION.md](VISUAL_EXPLANATION.md)** - Visual diagrams, before/after comparison (if exists)
 
 ## 🔍 What Was Fixed
 
