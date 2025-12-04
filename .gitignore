@@ -209,5 +209,26 @@ __marimo__/
 # Project-specific files
 *.gpkg
 *.graphml
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.xml
 route_map_*.html
 demo_route_*.html
+BC_*.graphml
+*_REPAIRED.graphml
+
+# NRN data files
+NRN_*/
+*.gdb/
+
+# Output files
+output/
+results/
+maps/
+
+# Temporary files
+temp/
+tmp/
