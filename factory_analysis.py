@@ -14,9 +14,9 @@ print("🏁 FACTORY v13 (Enhanced Preprocessing, Validation & NRN Integration) S
 
 # Configuration for NRN data loading
 NRN_CONFIG = {
-    'INCLUDE_ALLEYWAYS': False,  # Feature flag - set to True to enable alleyways
+    'INCLUDE_ALLEYWAYS': True,  # Feature flag - set to True to enable alleyways
     'INCLUDE_METADATA': True,    # Extract route numbers, names, etc.
-    'INCLUDE_METADATA_LAYERS': False,  # Fetch Trans-Canada, National Highway, etc. from MapServer
+    'INCLUDE_METADATA_LAYERS': True,  # Fetch Trans-Canada, National Highway, etc. from MapServer
     'METADATA_LAYERS': [         # Which metadata layers to fetch (None for all)
         'trans_canada',          # Trans-Canada Highway
         'national_highway',      # National Highway System

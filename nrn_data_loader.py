@@ -99,47 +99,73 @@ class NRNDataLoader:
             GeoDataFrame with layer data, or None if fetch fails
         """
         api_url = f"{self.BASE_API}/{layer_id}/query"
-        
-        print(f"\n🌐 Fetching {layer_name} from NRN MapServer...")
-        print(f"   URL: {api_url} (Layer {layer_id})")
-        
-        params = {
+        info_url = f"{self.BASE_API}/{layer_id}?f=json"
+
+        print(f"\n🌐 Fetching {layer_name} from NRN MapServer (with paging)...")
+        # 1) Ask the layer for its maxRecordCount (fallback to 1000 if missing)
+        try:
+            info_resp = requests.get(info_url, timeout=timeout)
+            info_resp.raise_for_status()
+            layer_info = info_resp.json()
+            max_rec = int(layer_info.get('maxRecordCount', 1000))
+            print(f"   Layer maxRecordCount: {max_rec}")
+        except Exception:
+            max_rec = 1000
+            print(f"   Could not read layer info; using chunk size {max_rec}")
+
+        params_base = {
             'where': '1=1',
             'outFields': '*',
             'returnGeometry': 'true',
             'f': 'geojson'
         }
-        
-        for attempt in range(max_retries):
-            try:
-                print(f"   Attempt {attempt + 1}/{max_retries}...")
-                response = requests.get(api_url, params=params, timeout=timeout)
-                response.raise_for_status()
-                
-                geojson_data = response.json()
-                
-                if geojson_data.get('features'):
-                    gdf = gpd.GeoDataFrame.from_features(geojson_data['features'])
-                    gdf.set_crs('EPSG:4617', inplace=True)  # NAD83(CSRS)
-                    
-                    print(f"   ✅ Successfully fetched {len(gdf):,} features")
-                    print(f"   📍 CRS: {gdf.crs}")
-                    
-                    return gdf
-                else:
-                    print("   ⚠️  No features found in response")
-                    return None
-                    
-            except requests.exceptions.RequestException as e:
-                print(f"   ⚠️  Attempt {attempt + 1} failed: {e}")
-                if attempt == max_retries - 1:
-                    print(f"   ❌ All {max_retries} attempts failed")
-                    return None
-            except Exception as e:
-                print(f"   ❌ Error processing response: {e}")
-                return None
-        
-        return None
+
+        all_features = []
+        offset = 0
+
+        while True:
+            params = params_base.copy()
+            params.update({
+                'resultOffset': offset,
+                'resultRecordCount': max_rec
+            })
+
+            success = False
+            for attempt in range(max_retries):
+                try:
+                    print(f"   Request offset={offset} count={max_rec} (attempt {attempt+1})")
+                    resp = requests.get(api_url, params=params, timeout=timeout)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    feats = data.get('features') or []
+                    all_features.extend(feats)
+                    success = True
+                    break
+                except requests.exceptions.RequestException as e:
+                    print(f"   ⚠️  Attempt {attempt+1} failed: {e}")
+                    if attempt == max_retries - 1:
+                        raise
+
+            if not success:
+                break
+
+            received = len(feats)
+            print(f"   Received {received} features (total so far: {len(all_features)})")
+            # If we received fewer than chunk, we're at the end
+            if received < max_rec or received == 0:
+                break
+            offset += received
+
+        if not all_features:
+            print("   ⚠️  No features found")
+            return None
+
+        gdf = gpd.GeoDataFrame.from_features(all_features)
+        # layer CRS: try to set if `crs` present in layer_info or leave as default
+        gdf.set_crs('EPSG:4617', inplace=True)  # NAD83(CSRS) as before
+        print(f"   ✅ Successfully fetched {len(gdf):,} features")
+        print(f"   📍 CRS: {gdf.crs}")
+        return gdf
     
     def fetch_alleyways(self, timeout=60, max_retries=3):
         """
@@ -219,19 +245,23 @@ class NRNDataLoader:
     def harmonize_alleyways_schema(self, gdf_alleys):
         """
         Harmonize alleyways schema to match main road network.
-        
-        Args:
-            gdf_alleys: GeoDataFrame with alleyways data
-        
-        Returns:
-            GeoDataFrame with harmonized schema
+        More robust: normalizes incoming column names, ensures types,
+        generates stable prefixed IDs, and canonicalizes key fields.
         """
         print("\n🔧 Harmonizing alleyways schema...")
-        
-        # Create a copy to avoid modifying original
+        if gdf_alleys is None:
+            print("   ⚠️  No alleyways GeoDataFrame provided")
+            return None
+
+        # Work on a copy and preserve CRS
         gdf = gdf_alleys.copy()
-        
-        # Map alleyways fields to main road network fields
+        crs = gdf.crs
+
+        # Normalize column names to lower-case for mapping robustness
+        col_map_lower = {c.lower(): c for c in gdf.columns}
+        gdf.columns = [c.lower() for c in gdf.columns]
+
+        # Field mapping from lowercase source -> target uppercase names
         field_mapping = {
             'roadclass': 'ROADCLASS',
             'l_stname_c': 'L_STNAME_C',
@@ -249,43 +279,84 @@ class NRNDataLoader:
             'r_placenam': 'R_PLACENAM',
             'datasetnam': 'DATASETNAM'
         }
-        
-        # Rename columns that exist
-        existing_mappings = {old: new for old, new in field_mapping.items() if old in gdf.columns}
-        if existing_mappings:
-            gdf.rename(columns=existing_mappings, inplace=True)
-            print(f"   ✅ Renamed {len(existing_mappings)} columns")
-        
-        # Override ROADCLASS to 'Alleyway' regardless of original value
-        # This is important for identifying alleyways in the merged dataset
+
+        # Apply renames for columns that exist
+        rename_map = {src: dst for src, dst in field_mapping.items() if src in gdf.columns}
+        if rename_map:
+            # rename lowers -> uppercase target names
+            gdf = gdf.rename(columns=rename_map)
+
+        # If geometry column name changed, ensure it's 'geometry'
+        # (GeoPandas normally keeps 'geometry' but just in case)
+        if 'geometry' not in gdf.columns and gdf.geometry.name != 'geometry':
+            gdf.set_geometry(gdf.geometry.name or gdf.columns[-1], inplace=True)
+
+        # Ensure we have a simple sequential index to base generated IDs on
+        gdf = gdf.reset_index(drop=True)
+
+        # Force ROADCLASS and canonical values
         gdf['ROADCLASS'] = 'Alleyway'
-        
-        # Add missing columns with default values
-        required_cols = ['PAVSURF', 'PAVSTATUS', 'TRAFFICDIR', 'SPEED', 'ROADJURIS', 'NID', 'ROADSEGID']
-        
-        for col in required_cols:
+
+        # Required columns and defaults
+        required_cols = {
+            'PAVSURF': 'Paved',
+            'PAVSTATUS': 'Paved',
+            'TRAFFICDIR': 'Both Directions',
+            'SPEED': self.DEFAULT_ALLEY_SPEED,
+            'ROADJURIS': 'Municipal',
+        }
+
+        # Add / fill required cols
+        for col, default in required_cols.items():
             if col not in gdf.columns:
-                if col == 'PAVSURF':
-                    gdf[col] = 'Paved'  # Assume paved
-                elif col == 'PAVSTATUS':
-                    gdf[col] = 'Paved'
-                elif col == 'TRAFFICDIR':
-                    gdf[col] = 'Both Directions'  # Alleys are typically bidirectional
-                elif col == 'SPEED':
-                    gdf[col] = self.DEFAULT_ALLEY_SPEED  # 15 km/h
-                elif col == 'ROADJURIS':
-                    gdf[col] = 'Municipal'
-                elif col == 'NID':
-                    # Generate unique IDs for alleyways (prefix with 'ALLEY_')
-                    gdf[col] = [f'ALLEY_{i}' for i in range(len(gdf))]
-                elif col == 'ROADSEGID':
-                    # Generate unique segment IDs
-                    gdf[col] = [f'ALLEYSEG_{i}' for i in range(len(gdf))]
-                else:
-                    gdf[col] = 'Unknown'
-        
-        print(f"   ✅ Schema harmonized - set ROADCLASS='Alleyway' and added missing columns")
-        
+                gdf[col] = default
+            else:
+                # if exists, fill missing values
+                gdf[col] = gdf[col].fillna(default)
+
+        # Generate stable, prefixed IDs if missing
+        if 'NID' not in gdf.columns:
+            gdf['NID'] = ['ALLEY_NID_{:08d}'.format(i) for i in range(len(gdf))]
+        else:
+            gdf['NID'] = gdf['NID'].fillna('').astype(str)
+            missing_nid = gdf['NID'] == ''
+            if missing_nid.any():
+                gdf.loc[missing_nid, 'NID'] = ['ALLEY_NID_{:08d}'.format(i) for i in gdf[missing_nid].index]
+
+        if 'ROADSEGID' not in gdf.columns:
+            gdf['ROADSEGID'] = ['ALLEY_SEG_{:08d}'.format(i) for i in range(len(gdf))]
+        else:
+            gdf['ROADSEGID'] = gdf['ROADSEGID'].fillna('').astype(str)
+            missing_rsid = gdf['ROADSEGID'] == ''
+            if missing_rsid.any():
+                gdf.loc[missing_rsid, 'ROADSEGID'] = ['ALLEY_SEG_{:08d}'.format(i) for i in gdf[missing_rsid].index]
+
+        # Canonicalize TRAFFICDIR strings to main dataset vocabulary
+        traffic_map = {
+            'both': 'Both Directions',
+            'bidirectional': 'Both Directions',
+            'both directions': 'Both Directions',
+            'positive': 'Same Direction',
+            'forward': 'Same Direction',
+            'same direction': 'Same Direction',
+            'negative': 'Opposite Direction',
+            'reverse': 'Opposite Direction',
+            'opposite direction': 'Opposite Direction',
+            '': 'Both Directions'
+        }
+        gdf['TRAFFICDIR'] = gdf['TRAFFICDIR'].astype(str).str.strip().str.lower().map(traffic_map).fillna('Both Directions')
+
+        # Ensure SPEED is numeric (float) and fallback to default
+        gdf['SPEED'] = pd.to_numeric(gdf['SPEED'], errors='coerce').fillna(self.DEFAULT_ALLEY_SPEED).astype(float)
+
+        # Ensure PAVSURF / PAVSTATUS are strings with title case
+        for c in ('PAVSURF', 'PAVSTATUS', 'ROADJURIS'):
+            gdf[c] = gdf[c].astype(str).replace({'nan': 'Unknown', 'None': 'Unknown'}).str.title()
+
+        # Restore CRS (keep original)
+        gdf.set_crs(crs, inplace=True)
+
+        print(f"   ✅ Schema harmonized - set ROADCLASS='Alleyway', added/fixed {', '.join(required_cols.keys())} and generated stable IDs")
         return gdf
     
     def merge_datasets(self, gdf_roads, gdf_alleys):
