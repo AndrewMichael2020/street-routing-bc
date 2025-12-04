@@ -14,3 +14,11 @@ bc-nurse-router/
 │   ├── factory\_pipeline.py             \# ETL: Cleans, Repairs, and Builds Graph  
 │   └── production\_simulation.py        \# Runtime: Simulates & Audits Trips  
 ├── docs/  
+
+
+<!-- Ensure you are in your desired directory first (e.g., your project root)
+# # Example: cd /path/to/my/project
+# # Download the file, wait for success (&&), then unzip it in the same directory
+# wget https://geo.statcan.gc.ca/nrn_rrn/bc/nrn_rrn_bc_GPKG.zip && unzip nrn_rrn_bc_GPKG.zip
+# # Optional: Remove the original zip file after successful extraction
+# rm nrn_rrn_bc_GPKG.zip -->
